@@ -57,10 +57,11 @@ const EXTRACTION_PROMPT = `你是小耕对话引擎的"信息提取模块"。你
  */
 export async function processTurn(
   sessionId: string,
-  userMessage: string
+  userMessage: string,
+  scenario: string = 'F'
 ): Promise<ChatResponse> {
   // 1. 加载或创建会话上下文
-  const conv = await getOrCreateConversation(sessionId);
+  const conv = await getOrCreateConversation(sessionId, scenario);
   const profile = await getOrCreateProfile(conv.id);
   const history = await getRecentMessages(conv.id, 20);
 
@@ -69,7 +70,7 @@ export async function processTurn(
 
   // 2. 对话生成（LLM Call #1）：生成小耕的自然语言回复
   const profileSummary = buildProfileSummary(profile);
-  let systemPrompt = buildDynamicSystemPrompt(conv.stage, profileSummary);
+  let systemPrompt = buildDynamicSystemPrompt(conv.stage, profileSummary, conv.scenario);
 
   if (b2StuckAtVague) {
     systemPrompt +=
@@ -115,7 +116,7 @@ export async function processTurn(
 
 // ---- 会话管理 ----
 
-async function getOrCreateConversation(sessionId: string): Promise<Conversation> {
+async function getOrCreateConversation(sessionId: string, scenario: string = 'F'): Promise<Conversation> {
   const { data: existing } = await supabaseAdmin
     .from('conversations')
     .select('*')
@@ -126,7 +127,7 @@ async function getOrCreateConversation(sessionId: string): Promise<Conversation>
 
   const { data: created, error } = await supabaseAdmin
     .from('conversations')
-    .insert({ session_id: sessionId })
+    .insert({ session_id: sessionId, scenario })
     .select()
     .single();
 

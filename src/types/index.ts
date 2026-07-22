@@ -111,6 +111,7 @@ export interface ScenarioPackage {
 export interface ChatRequest {
   session_id: string;
   message: string;
+  scenario?: string;            // 'F' | 'C' — 场景标识
 }
 
 export interface ProfileUpdate {

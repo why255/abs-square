@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 处理一轮对话（engine.ts 内部完成提取→打分→决策→持久化）
-    const result = await processTurn(body.session_id, body.message);
+    const result = await processTurn(body.session_id, body.message, body.scenario || 'F');
 
     // 如果进入 S 阶段，触发 S 组装
     if (result.stage === 'S') {

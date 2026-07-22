@@ -2,14 +2,32 @@
 
 // ============================================================
 // P1 进入页（落地页）
-// 设计规范 V1.0：一个按钮走天下
+// 设计规范 V1.0：品牌展示 + 场景选择
 // ============================================================
 
+import { useState } from 'react';
+import type { Scenario } from '@/app/page';
+
 interface LandingPageProps {
-  onEnter: () => void;
+  onEnter: (scenario: Scenario) => void;
 }
 
+const SCENES: { key: Scenario; title: string; desc: string }[] = [
+  {
+    key: 'F',
+    title: '职业迷茫',
+    desc: '升值涨薪难 · 路径看不清 · 怕被AI替代',
+  },
+  {
+    key: 'C',
+    title: '招不到合适的人',
+    desc: 'JD写不准 · 简历筛不出 · 面试聊不深',
+  },
+];
+
 export default function LandingPage({ onEnter }: LandingPageProps) {
+  const [selected, setSelected] = useState<Scenario>('F');
+
   return (
     <div
       className="flex flex-col items-center justify-center min-h-screen px-6 text-center"
@@ -42,15 +60,50 @@ export default function LandingPage({ onEnter }: LandingPageProps) {
 
       {/* 邀请语 */}
       <p
-        className="text-[16px] leading-[1.8] mb-10 max-w-xs animate-fade-up"
+        className="text-[16px] leading-[1.8] mb-8 max-w-xs animate-fade-up"
         style={{
           color: '#8A857E',
           fontFamily: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
           animationDelay: '0.2s',
         }}
       >
-        我是小耕，最近是不是有那么些瞬间，会突然心里一空？
+        我是小耕，聊聊最近卡住你的事？
       </p>
+
+      {/* 场景选择 */}
+      <div className="w-full max-w-xs mb-8 animate-fade-up space-y-2" style={{ animationDelay: '0.25s' }}>
+        {SCENES.map((s) => (
+          <button
+            key={s.key}
+            className="w-full text-left px-4 py-3 rounded-[16px] transition-all active:scale-[0.98]"
+            style={{
+              backgroundColor: selected === s.key ? '#FFFFFF' : 'transparent',
+              border: selected === s.key ? '2px solid #E8935A' : '1px solid #E5DFD8',
+              boxShadow: selected === s.key ? '0 2px 8px rgba(61,54,48,0.08)' : 'none',
+            }}
+            onClick={() => setSelected(s.key)}
+          >
+            <div
+              className="text-[16px] font-medium mb-0.5"
+              style={{
+                color: '#3D3630',
+                fontFamily: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
+              }}
+            >
+              {s.title}
+            </div>
+            <div
+              className="text-[13px]"
+              style={{
+                color: '#8A857E',
+                fontFamily: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
+              }}
+            >
+              {s.desc}
+            </div>
+          </button>
+        ))}
+      </div>
 
       {/* 主按钮 */}
       <button
@@ -59,9 +112,9 @@ export default function LandingPage({ onEnter }: LandingPageProps) {
           backgroundColor: '#E8935A',
           color: '#FFFFFF',
           fontFamily: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
-          animationDelay: '0.3s',
+          animationDelay: '0.35s',
         }}
-        onClick={onEnter}
+        onClick={() => onEnter(selected)}
       >
         和小耕聊聊 →
       </button>
@@ -72,7 +125,7 @@ export default function LandingPage({ onEnter }: LandingPageProps) {
         style={{
           color: '#8A857E',
           fontFamily: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
-          animationDelay: '0.4s',
+          animationDelay: '0.45s',
         }}
       >
         ABS：AI时代的结构化认知基本功

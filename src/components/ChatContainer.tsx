@@ -11,6 +11,7 @@ import ChatInput from './ChatInput';
 import TypingIndicator from './TypingIndicator';
 import SolutionPage from './SolutionPage';
 import type { Stage, SPlan } from '@/types';
+import type { Scenario } from '@/app/page';
 
 interface DisplayMessage {
   id: string;
@@ -18,12 +19,25 @@ interface DisplayMessage {
   content: string;
 }
 
-export default function ChatContainer() {
+const SCENE_OPENINGS: Record<Scenario, string> = {
+  F: '嗨，我是小耕。\n\n最近是不是有那么些瞬间，会突然心里一空，想："我这一年，到底往前走了吗？"\n\n没事儿，咱们就当朋友聊天，慢慢说——你现在工作状态怎么样？最近是特别忙，还是有点闲？',
+  C: '嗨，我是小耕。\n\n最近是不是有那么些瞬间，打开招聘网站，看着那几十份简历，却觉得"没有一份对得上"？\n\n没事儿，咱们当朋友聊天——你最近在招什么岗位？卡在哪一步了？',
+};
+
+const SCENE_LABELS: Record<Scenario, string> = {
+  F: '职业迷茫',
+  C: '招不到人',
+};
+
+interface ChatContainerProps {
+  scenario: Scenario;
+}
+
+export default function ChatContainer({ scenario }: ChatContainerProps) {
   const DEFAULT_OPENING: DisplayMessage = {
     id: '0',
     role: 'assistant',
-    content:
-      '嗨，我是小耕。\n\n最近是不是有那么些瞬间，会突然心里一空，想："我这一年，到底往前走了吗？"\n\n没事儿，咱们就当朋友聊天，慢慢说——你现在工作状态怎么样？最近是特别忙，还是有点闲？',
+    content: SCENE_OPENINGS[scenario],
   };
 
   const [messages, setMessages] = useState<DisplayMessage[]>([DEFAULT_OPENING]);
@@ -32,10 +46,11 @@ export default function ChatContainer() {
   const [sPlan, setSPlan] = useState<SPlan | null>(null);
   const [sessionId] = useState(() => {
     if (typeof window !== 'undefined') {
-      let id = localStorage.getItem('abs_session_id');
+      const key = `abs_session_${scenario}`;
+      let id = localStorage.getItem(key);
       if (!id) {
         id = crypto.randomUUID();
-        localStorage.setItem('abs_session_id', id);
+        localStorage.setItem(key, id);
       }
       return id;
     }
@@ -85,7 +100,7 @@ export default function ChatContainer() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message: text }),
+        body: JSON.stringify({ session_id: sessionId, message: text, scenario }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -154,6 +169,16 @@ export default function ChatContainer() {
             style={{ color: '#8A857E' }}
           >
             ● 在线
+          </span>
+          <span
+            className="ml-1 text-[12px] px-2 py-0.5 rounded-full"
+            style={{
+              backgroundColor: '#FAF6F0',
+              color: '#8A857E',
+              border: '1px solid #E5DFD8',
+            }}
+          >
+            {SCENE_LABELS[scenario]}
           </span>
         </div>
         {stage && stage !== 'A' && (
