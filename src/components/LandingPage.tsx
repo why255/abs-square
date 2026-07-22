@@ -23,6 +23,11 @@ const SCENES: { key: Scenario; title: string; desc: string }[] = [
     title: '招不到合适的人',
     desc: 'JD写不准 · 简历筛不出 · 面试聊不深',
   },
+  {
+    key: 'D',
+    title: '绩效推不动+薪酬激励失效',
+    desc: '老板不认 · 员工抱怨 · 调薪没依据',
+  },
 ];
 
 export default function LandingPage({ onEnter }: LandingPageProps) {
