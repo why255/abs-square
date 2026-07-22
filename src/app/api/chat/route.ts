@@ -7,7 +7,7 @@ import { processTurn } from '@/lib/engine';
 import { retrieveContext } from '@/lib/rag';
 import { assembleSPlan, saveSPlan } from '@/lib/s-assembler';
 import { supabaseAdmin } from '@/lib/supabase';
-import type { ChatRequest, ChatResponse, Stage, SPlan } from '@/types';
+import type { ChatRequest, Stage } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     if (result.stage === 'S') {
       const conv = await supabaseAdmin
         .from('conversations')
-        .select('id')
+        .select('id, scenario')
         .eq('session_id', body.session_id)
         .single();
 
@@ -48,9 +48,10 @@ export async function POST(request: NextRequest) {
             p.b4_sufficiency >= 2;
 
           if (allReady) {
-            // RAG 检索
-            const profileSummary = `${p.b1_content} ${p.b2_content} ${p.b3_signal}`;
-            const ragContexts = await retrieveContext(profileSummary);
+            // RAG 检索（使用对话的实际场景，默认F）
+            const profileSummary = `${p.b1_content || ''} ${p.b2_content || ''} ${p.b3_signal || ''}`;
+            const convScenario = conv.data.scenario || 'F';
+            const ragContexts = await retrieveContext(profileSummary, convScenario);
 
             // S 组装
             const plan = await assembleSPlan(p, ragContexts);

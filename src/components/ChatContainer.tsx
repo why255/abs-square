@@ -165,7 +165,7 @@ export default function ChatContainer() {
               border: '1px solid #E5DFD8',
             }}
           >
-            {stage === 'B' ? '澄清中' : stage === 'S' || stage === 'done' ? '方案生成' : ''}
+            {stage === 'B' ? '澄清中' : (stage === 'S' || stage === 'done') ? '方案生成' : ''}
           </span>
         )}
       </header>

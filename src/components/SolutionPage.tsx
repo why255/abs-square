@@ -5,7 +5,7 @@
 // UI设计规范 V1.0 §四 P3 严格实现
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { SPlan } from '@/types';
 
 interface SolutionPageProps {
@@ -16,20 +16,31 @@ interface SolutionPageProps {
 export default function SolutionPage({ plan, onClose }: SolutionPageProps) {
   const [visibleCards, setVisibleCards] = useState<number>(0);
   const [saved, setSaved] = useState(false);
+  const mountedRef = useRef(true);
 
-  // 卡片逐张展开（0.3s 间隔，模拟"她在一张张翻开"）
+  // 卸载标记
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // 卡片逐张展开（0.3s 间隔）
   useEffect(() => {
     const totalCards = 6;
-    const timers: NodeJS.Timeout[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
     for (let i = 0; i < totalCards; i++) {
-      timers.push(setTimeout(() => setVisibleCards(i + 1), i * 300));
+      timers.push(setTimeout(() => {
+        if (mountedRef.current) setVisibleCards(i + 1);
+      }, i * 300));
     }
     return () => timers.forEach(clearTimeout);
   }, []);
 
   const handleSave = () => {
     setSaved(true);
-    setTimeout(() => onClose(), 1200);
+    setTimeout(() => {
+      if (mountedRef.current) onClose();
+    }, 1200);
   };
 
   const handleExport = () => {
@@ -47,7 +58,7 @@ export default function SolutionPage({ plan, onClose }: SolutionPageProps) {
 
   return (
     <div
-      className="flex flex-col items-center min-h-screen px-5 py-10"
+      className="flex flex-col items-center min-h-screen h-screen overflow-y-auto px-5 py-10"
       style={{ backgroundColor: '#FAF6F0', fontFamily: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif' }}
     >
       {/* 容器：移动端全宽，桌面端限宽640px */}

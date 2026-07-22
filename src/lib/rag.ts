@@ -9,9 +9,11 @@ import type { ScenarioPackage } from '@/types';
 
 /**
  * RAG 检索：根据用户 B1-B4 profile 检索相关场景包内容
+ * @param scenario 场景标识（F=职业迷茫, C=招不到人）
  */
 export async function retrieveContext(
   profileSummary: string,
+  scenario: string = 'F',
   topK: number = 5
 ): Promise<string[]> {
   try {
@@ -21,7 +23,7 @@ export async function retrieveContext(
       {
         query_embedding: new Array(1536).fill(0), // 占位，向量检索就绪后替换
         match_count: topK,
-        scenario_filter: 'F',
+        scenario_filter: scenario,
       }
     );
 
@@ -33,7 +35,7 @@ export async function retrieveContext(
   }
 
   // 关键词匹配模式：从 Supabase 拉取语料做本地关键词计分
-  return keywordSearchFromDB(profileSummary, topK);
+  return keywordSearchFromDB(profileSummary, scenario, topK);
 }
 
 /**
@@ -41,13 +43,14 @@ export async function retrieveContext(
  */
 async function keywordSearchFromDB(
   query: string,
+  scenario: string,
   topK: number
 ): Promise<string[]> {
   try {
     const { data: all } = await supabaseAdmin
       .from('scenario_packages')
       .select('content, metadata')
-      .eq('scenario', 'F');
+      .eq('scenario', scenario);
 
     if (!all || all.length === 0) return [];
 
