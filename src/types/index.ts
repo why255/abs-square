@@ -131,6 +131,7 @@ export interface ChatResponse {
   reply: string;
   stage: Stage;
   profile_update?: ProfileUpdate;
+  s_plan?: SPlan;              // S阶段完成时附带方案包
 }
 
 // ---- 对话引擎内部 ----

@@ -9,7 +9,8 @@ import { useState, useRef, useEffect } from 'react';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import TypingIndicator from './TypingIndicator';
-import type { Stage } from '@/types';
+import SolutionPage from './SolutionPage';
+import type { Stage, SPlan } from '@/types';
 
 interface DisplayMessage {
   id: string;
@@ -28,6 +29,7 @@ export default function ChatContainer() {
   const [messages, setMessages] = useState<DisplayMessage[]>([DEFAULT_OPENING]);
   const [isLoading, setIsLoading] = useState(false);
   const [stage, setStage] = useState<Stage>('A');
+  const [sPlan, setSPlan] = useState<SPlan | null>(null);
   const [sessionId] = useState(() => {
     if (typeof window !== 'undefined') {
       let id = localStorage.getItem('abs_session_id');
@@ -99,6 +101,11 @@ export default function ChatContainer() {
       setMessages((prev) => [...prev, assistantMsg]);
 
       if (data.stage) setStage(data.stage);
+
+      // S方案包生成 → 0.8s后展示P3（让小耕的最后一条消息先呈现）
+      if (data.s_plan) {
+        setTimeout(() => setSPlan(data.s_plan), 800);
+      }
     } catch {
       const errorMsg: DisplayMessage = {
         id: (Date.now() + 1).toString(),
@@ -110,6 +117,11 @@ export default function ChatContainer() {
       setIsLoading(false);
     }
   };
+
+  // P3：方案包展示（收到 s_plan 后自动切换）
+  if (sPlan) {
+    return <SolutionPage plan={sPlan} onClose={() => setSPlan(null)} />;
+  }
 
   return (
     <div className="flex flex-col h-screen max-w-[640px] mx-auto">

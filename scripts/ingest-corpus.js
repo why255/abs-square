@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
- * 场景包语料接入脚本
- * 功能：解析 Minimax 场景F .md 文件 → 按条目切分 → 写入 Supabase scenario_packages
- * 支持：增量更新（同 scenario 先清后插）、metadata 保留来源标注
+ * 场景包语料接入脚本（通用版）
+ * 功能：解析 Minimax 场景包 .md 文件 → 按条目切分 → 写入 Supabase scenario_packages
+ * 支持：增量更新（同 scenario 先清后插）、metadata 保留来源标注、多场景切换
  *
- * 用法：node scripts/ingest-corpus.js
+ * 用法：
+ *   node scripts/ingest-corpus.js F    ← 场景F（职业迷茫）
+ *   node scripts/ingest-corpus.js C    ← 场景C（招不到合适的人）
+ *
+ * 环境变量：SUPABASE_SERVICE_ROLE_KEY（必须）、NEXT_PUBLIC_SUPABASE_URL（可选）
  * 依赖：@supabase/supabase-js（已安装）
  */
 
@@ -22,7 +26,21 @@ if (!SERVICE_KEY) {
   console.error('   export SUPABASE_SERVICE_ROLE_KEY=sb_secret__...');
   process.exit(1);
 }
-const SCENARIO = 'F';
+
+// 场景选择：命令行参数（F/C），默认 F
+const SCENARIO = (process.argv[2] || 'F').toUpperCase();
+
+// 场景目录映射
+const SCENARIO_DIRS = {
+  F: '场景F-职业迷茫',
+  C: '场景C-招不到合适的人',
+};
+
+if (!SCENARIO_DIRS[SCENARIO]) {
+  console.error(`❌ 未知场景 "${SCENARIO}"，已知场景：${Object.keys(SCENARIO_DIRS).join(', ')}`);
+  process.exit(1);
+}
+
 const CORPUS_DIR = path.resolve(
   __dirname,
   '..',
@@ -31,7 +49,7 @@ const CORPUS_DIR = path.resolve(
   '..',
   '02-ABS知识库重组（Minimax执行）',
   '05-提交验收',
-  '场景F-职业迷茫'
+  SCENARIO_DIRS[SCENARIO]
 );
 
 // 跳过的文件（说明文档，不是语料）
@@ -56,7 +74,7 @@ async function main() {
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
   console.log('═══════════════════════════════════════');
-  console.log('  场景F 语料接入');
+  console.log(`  场景${SCENARIO} 语料接入`);
   console.log('═══════════════════════════════════════\n');
 
   // 1. 扫描语料目录
@@ -140,7 +158,7 @@ async function main() {
     .select('id, module_name', { count: 'exact' })
     .eq('scenario', SCENARIO);
 
-  console.log(`\n🔍 验证：DB 中 scenario='F' 共 ${verify?.length || 0} 条`);
+  console.log(`\n🔍 验证：DB 中 scenario='${SCENARIO}' 共 ${verify?.length || 0} 条`);
   const verifyByMod = {};
   for (const v of verify || []) {
     verifyByMod[v.module_name] = (verifyByMod[v.module_name] || 0) + 1;

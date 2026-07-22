@@ -7,7 +7,7 @@ import { processTurn } from '@/lib/engine';
 import { retrieveContext } from '@/lib/rag';
 import { assembleSPlan, saveSPlan } from '@/lib/s-assembler';
 import { supabaseAdmin } from '@/lib/supabase';
-import type { ChatRequest, Stage } from '@/types';
+import type { ChatRequest, ChatResponse, Stage, SPlan } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,13 +54,26 @@ export async function POST(request: NextRequest) {
 
             // S 组装
             const plan = await assembleSPlan(p, ragContexts);
-            await saveSPlan(conv.data.id, plan);
+            const savedPlan = await saveSPlan(conv.data.id, plan);
 
-            // 小耕交付话术（保留原有回复作为过渡，追加方案包内容）
+            // 小耕交付话术
             const deliveryIntro =
               '我为你整理好了一份路线图。来，咱们一起看看——\n\n';
             const planText = formatPlanForDelivery(plan);
             result.reply = deliveryIntro + planText;
+
+            // 附带方案包数据 → 前端展示 P3
+            result.s_plan = {
+              id: savedPlan.id,
+              conversation_id: savedPlan.conversation_id,
+              diagnosis: savedPlan.diagnosis,
+              route_map: savedPlan.route_map,
+              actions: savedPlan.actions,
+              pitfalls: savedPlan.pitfalls,
+              first_week: savedPlan.first_week,
+              revisit_at: savedPlan.revisit_at,
+              created_at: savedPlan.created_at,
+            };
 
             // 标记会话完成
             await supabaseAdmin
