@@ -34,6 +34,7 @@ const SCENARIO = (process.argv[2] || 'F').toUpperCase();
 const SCENARIO_DIRS = {
   F: '场景F-职业迷茫',
   C: '场景C-招不到合适的人',
+  D: '场景D-绩效推不动加薪酬激励失效',
 };
 
 if (!SCENARIO_DIRS[SCENARIO]) {
@@ -174,12 +175,26 @@ async function main() {
 
 // ============================================================
 // 解析器：单个 .md 文件 → 条目数组
+// 支持两种格式：
+//   格式A: ### XX-NN｜标题（场景F/C/D 大部分模块）
+//   格式B: ### N.N 标题（案例层数字子节格式，如 ### 2.1 案例概要）
 // ============================================================
 function parseFile(raw, fileName, moduleName) {
-  const entries = [];
   const lines = raw.split('\n');
 
-  // 找到所有 ### 标题行的位置（条目边界）
+  // 先尝试格式A（条目ID格式）
+  const entries = parseFormatA(lines, fileName, moduleName);
+  if (entries.length > 0) return entries;
+
+  // 案例层特殊处理：尝试格式B（数字子节格式）
+  return parseFormatB(lines, fileName, moduleName);
+}
+
+/**
+ * 格式A：### XX-NN｜标题 或 ### XX-NN | 标题
+ */
+function parseFormatA(lines, fileName, moduleName) {
+  const entries = [];
   const headers = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -188,7 +203,6 @@ function parseFile(raw, fileName, moduleName) {
     }
   }
 
-  // 按条目切分
   for (let h = 0; h < headers.length; h++) {
     const startIdx = headers[h].index;
     const endIdx =
@@ -260,6 +274,106 @@ function parseFile(raw, fileName, moduleName) {
       module_name: moduleName,
       content: fullContent,
       metadata,
+    });
+  }
+
+  return entries;
+}
+
+/**
+ * 格式B：案例层数字子节格式（### N.N 标题）
+ * 将同一大节下的子节合并为一个案例条目
+ * 场景C/D 案例层使用此格式
+ */
+function parseFormatB(lines, fileName, moduleName) {
+  const entries = [];
+  const caseMap = new Map(); // majorNum → { title, lines }
+
+  // 找到案例总览表提取 case ID 列表
+  const caseIds = [];
+  for (const line of lines) {
+    const match = line.match(/^\|\s*(C-\d+)\s*\|/);
+    if (match && !caseIds.includes(match[1])) {
+      caseIds.push(match[1]);
+    }
+  }
+
+  // 找到所有 ### N.N 标题
+  const subsections = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^###\s+(\d+)\.(\d+)\s*(.+)?$/);
+    if (m) {
+      subsections.push({ index: i, major: parseInt(m[1]), minor: parseInt(m[2]), title: (m[3] || '').trim() });
+    }
+  }
+
+  if (subsections.length === 0) return entries;
+
+  // 找到 ## 二、案例详情 的位置（案例正文从此开始）
+  let detailStart = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+二[、，]\s*案例详情/.test(lines[i])) {
+      detailStart = i;
+      break;
+    }
+  }
+
+  // 按大节号分组（跳过 1，那是总览）
+  const majorNums = [...new Set(subsections.map(s => s.major))].filter(n => n >= 2).sort();
+
+  for (let ci = 0; ci < majorNums.length; ci++) {
+    const major = majorNums[ci];
+    const caseId = caseIds[ci] || `C-${String(major - 1).padStart(2, '0')}`;
+
+    // 收集该大节下所有子节的内容
+    const majorSubs = subsections.filter(s => s.major === major).sort((a, b) => a.minor - b.minor);
+    if (majorSubs.length === 0) continue;
+
+    const firstSub = majorSubs[0];
+    const lastSub = majorSubs[majorSubs.length - 1];
+
+    // 从第一个子节标题行开始，到下一个大节（或文件末尾）
+    const startIdx = firstSub.index;
+    const nextMajor = majorNums[ci + 1];
+    let endIdx = lines.length;
+    if (nextMajor) {
+      const nextFirst = subsections.find(s => s.major === nextMajor);
+      if (nextFirst) endIdx = nextFirst.index;
+    }
+
+    // 收集内容（跳过 ### 标题行本身，收集所有正文）
+    const contentLines = [];
+    for (let i = startIdx; i < endIdx; i++) {
+      const line = lines[i];
+      // 跳过子节标题行
+      if (/^###\s+\d+\.\d+/.test(line)) continue;
+      // 遇到 ## 停止
+      if (/^##\s/.test(line)) break;
+      if (line.trim()) {
+        contentLines.push(line);
+      } else if (contentLines.length > 0) {
+        contentLines.push('');
+      }
+    }
+
+    // 从第一个子节标题提取案例名称
+    const caseTitle = firstSub.title || caseId;
+
+    const fullContent = `【${caseId}】${caseTitle}\n\n${contentLines.join('\n').trim()}`;
+    if (fullContent.trim().length < 50) continue;
+
+    entries.push({
+      module_name: moduleName,
+      content: fullContent,
+      metadata: {
+        entry_id: caseId,
+        title: caseTitle,
+        source_file: fileName,
+        module_name: moduleName,
+        source: '',
+        pain_type: '',
+        stage: '',
+      },
     });
   }
 
