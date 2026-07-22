@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/* ============================================================
+   ABS超级广场 · 全局样式
+   依据：UI设计规范 V1.0（Kimi编制）
+   ============================================================ */
+
+:root {
+  /* 色彩系统 */
+  --color-warm-orange: #E8935A;
+  --color-cream: #FAF6F0;
+  --color-mist-pink: #F3DDD0;
+  --color-cloud-gray: #8A857E;
+  --color-ink-brown: #3D3630;
+  --color-white: #FFFFFF;
+  --color-sprout-green: #7FA88A;
+  --color-wheat-gold: #D4B06A;
+  --color-border: #E5DFD8;
+  --shadow: rgba(61, 54, 48, 0.08);
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink-brown);
+  font-family: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+/* ============================================================
+   动效（规范：只用 fade + translateY(8px) 0.3s ease-out）
+   ============================================================ */
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.3s ease-out both;
+}
+
+/* 呼吸圆点（小耕输入中，暖阳橙，1.2s周期） */
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 1.2s ease-in-out infinite both;
+}
