@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * 场景包语料接入脚本（通用版）
- * 功能：解析 Minimax 场景包 .md 文件 → 按条目切分 → 写入 Supabase scenario_packages
- * 支持：增量更新（同 scenario 先清后插）、metadata 保留来源标注、多场景切换
+ * 场景包语料接入脚本（通用版 V2.0）
+ * 功能：解析 Minimax 场景包 .md 文件 → 按条目切分 → 过滤"行号待核" → 写入 Supabase
+ * 支持：增量更新（同 scenario 先清后插）、metadata 保留来源标注、6场景全覆盖
+ * 质量门禁：含"行号待核/行号待补/待补行号/待核"标记的条目不写入DB
  *
  * 用法：
- *   node scripts/ingest-corpus.js F    ← 场景F（职业迷茫）
- *   node scripts/ingest-corpus.js C    ← 场景C（招不到合适的人）
+ *   node scripts/ingest-corpus.js F     ← 单场景
+ *   node scripts/ingest-corpus.js all   ← 全场景批量
  *
  * 环境变量：SUPABASE_SERVICE_ROLE_KEY（必须）、NEXT_PUBLIC_SUPABASE_URL（可选）
  * 依赖：@supabase/supabase-js（已安装）
@@ -27,31 +28,27 @@ if (!SERVICE_KEY) {
   process.exit(1);
 }
 
-// 场景选择：命令行参数（F/C），默认 F
+// 场景选择：命令行参数（A-F 或 all），默认 F
 const SCENARIO = (process.argv[2] || 'F').toUpperCase();
 
-// 场景目录映射
+// 场景目录映射（6场景全覆盖）
 const SCENARIO_DIRS = {
-  F: '场景F-职业迷茫',
+  A: '场景A-AI时代精准表达',
+  B: '场景B-老板AI建议绑架',
   C: '场景C-招不到合适的人',
   D: '场景D-绩效推不动加薪酬激励失效',
+  E: '场景E-培训没人用',
+  F: '场景F-职业迷茫',
 };
 
-if (!SCENARIO_DIRS[SCENARIO]) {
+// 批量模式
+const BATCH_MODE = SCENARIO === 'ALL';
+const SCENARIOS_TO_RUN = BATCH_MODE ? Object.keys(SCENARIO_DIRS) : [SCENARIO];
+
+if (!BATCH_MODE && !SCENARIO_DIRS[SCENARIO]) {
   console.error(`❌ 未知场景 "${SCENARIO}"，已知场景：${Object.keys(SCENARIO_DIRS).join(', ')}`);
   process.exit(1);
 }
-
-const CORPUS_DIR = path.resolve(
-  __dirname,
-  '..',
-  '..',
-  '..',
-  '..',
-  '02-ABS知识库重组（Minimax执行）',
-  '05-提交验收',
-  SCENARIO_DIRS[SCENARIO]
-);
 
 // 跳过的文件（说明文档，不是语料）
 const SKIP_FILES = ['00-场景包说明.md'];
@@ -69,108 +66,139 @@ const MODULE_MAP = {
 };
 
 // ============================================================
-// 主流程
+// 质量门禁：检测"行号待核"标记
+// ============================================================
+const UNVERIFIED_PATTERN = /行号待核|行号待补|待补行号|待核/;
+
+function hasUnverifiedSource(entry) {
+  const content = entry.content || '';
+  const source = (entry.metadata && entry.metadata.source) || '';
+  return UNVERIFIED_PATTERN.test(content) || UNVERIFIED_PATTERN.test(source);
+}
+
+// ============================================================
+// 主流程（支持单场景 + 批量模式）
 // ============================================================
 async function main() {
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+  const batchStats = [];
 
-  console.log('═══════════════════════════════════════');
-  console.log(`  场景${SCENARIO} 语料接入`);
-  console.log('═══════════════════════════════════════\n');
+  for (const scenario of SCENARIOS_TO_RUN) {
+    const dirName = SCENARIO_DIRS[scenario];
+    const corpusDir = path.resolve(
+      __dirname, '..', '..', '..', '..',
+      '02-ABS知识库重组（Minimax执行）', '05-提交验收', dirName
+    );
 
-  // 1. 扫描语料目录
-  const files = fs
-    .readdirSync(CORPUS_DIR)
-    .filter((f) => f.endsWith('.md') && !SKIP_FILES.includes(f))
-    .sort();
+    console.log('═══════════════════════════════════════');
+    console.log(`  场景${scenario} 语料接入`);
+    console.log('═══════════════════════════════════════\n');
 
-  console.log(`📂 语料目录：${CORPUS_DIR}`);
-  console.log(`📄 发现 ${files.length} 个语料文件\n`);
+    // 1. 扫描语料目录
+    const files = fs.readdirSync(corpusDir)
+      .filter((f) => f.endsWith('.md') && !SKIP_FILES.includes(f))
+      .sort();
 
-  // 2. 解析所有文件 → 条目列表
-  let allEntries = [];
-  let totalRawBytes = 0;
+    console.log(`📂 ${dirName}`);
+    console.log(`📄 ${files.length} 个模块文件\n`);
 
-  for (const file of files) {
-    const filePath = path.join(CORPUS_DIR, file);
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    totalRawBytes += Buffer.byteLength(raw, 'utf-8');
+    // 2. 解析所有文件 → 条目列表
+    let allEntries = [];
+    let totalRawBytes = 0;
 
-    const prefix = file.substring(0, 2); // "01", "02", ...
-    const moduleName = MODULE_MAP[prefix] || file;
-    const entries = parseFile(raw, file, moduleName);
-
-    console.log(`   ${file} → ${entries.length} 条`);
-    allEntries = allEntries.concat(entries);
-  }
-
-  console.log(`\n📊 解析完成：${allEntries.length} 条语料（${(totalRawBytes / 1024).toFixed(1)} KB）\n`);
-
-  // 3. 按模块统计
-  const byModule = {};
-  for (const e of allEntries) {
-    byModule[e.module_name] = (byModule[e.module_name] || 0) + 1;
-  }
-  console.log('📋 模块分布：');
-  for (const [mod, count] of Object.entries(byModule)) {
-    console.log(`   ${mod}: ${count} 条`);
-  }
-
-  // 4. 写入 Supabase（增量更新：先清后插）
-  console.log('\n💾 写入 Supabase...');
-
-  const { error: delErr } = await supabase
-    .from('scenario_packages')
-    .delete()
-    .eq('scenario', SCENARIO);
-
-  if (delErr) {
-    console.error('   ❌ 清空旧语料失败：', delErr.message);
-    process.exit(1);
-  }
-  console.log('   ✅ 已清空旧语料');
-
-  // 分批插入（Supabase 单次 insert 有限制）
-  const BATCH_SIZE = 50;
-  let inserted = 0;
-
-  for (let i = 0; i < allEntries.length; i += BATCH_SIZE) {
-    const batch = allEntries.slice(i, i + BATCH_SIZE).map((e) => ({
-      scenario: SCENARIO,
-      module_name: e.module_name,
-      content: e.content,
-      metadata: e.metadata,
-      // embedding 留空，后续 embedding 服务就绪后补填
-    }));
-
-    const { error } = await supabase.from('scenario_packages').insert(batch);
-    if (error) {
-      console.error(`   ❌ 批次 ${Math.floor(i / BATCH_SIZE) + 1} 插入失败：`, error.message);
-      process.exit(1);
+    for (const file of files) {
+      const filePath = path.join(corpusDir, file);
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      totalRawBytes += Buffer.byteLength(raw, 'utf-8');
+      const prefix = file.substring(0, 2);
+      const moduleName = MODULE_MAP[prefix] || file;
+      const entries = parseFile(raw, file, moduleName);
+      console.log(`   ${file} → ${entries.length} 条`);
+      allEntries = allEntries.concat(entries);
     }
-    inserted += batch.length;
+
+    // 3. 质量过滤：排除"行号待核"条目
+    const cleanEntries = allEntries.filter((e) => !hasUnverifiedSource(e));
+    const filteredCount = allEntries.length - cleanEntries.length;
+
+    console.log(`\n📊 解析: ${allEntries.length} 条 | 过滤(待核): ${filteredCount} 条 | 入库: ${cleanEntries.length} 条 (${(totalRawBytes / 1024).toFixed(1)} KB)\n`);
+
+    // 4. 模块分布（入库条目）
+    const byModule = {};
+    for (const e of cleanEntries) {
+      byModule[e.module_name] = (byModule[e.module_name] || 0) + 1;
+    }
+    console.log('📋 入库模块分布：');
+    for (const [mod, count] of Object.entries(byModule)) {
+      console.log(`   ${mod}: ${count} 条`);
+    }
+    if (filteredCount > 0) {
+      console.log(`   ⚠️ 已过滤(待核): ${filteredCount} 条`);
+    }
+
+    // 5. 写入 Supabase
+    console.log('\n💾 写入 Supabase...');
+    const { error: delErr } = await supabase
+      .from('scenario_packages').delete().eq('scenario', scenario);
+    if (delErr) {
+      console.error(`   ❌ 清空失败：${delErr.message}`);
+      continue;
+    }
+    console.log('   ✅ 已清空旧数据');
+
+    const BATCH_SIZE = 50;
+    let inserted = 0;
+    for (let i = 0; i < cleanEntries.length; i += BATCH_SIZE) {
+      const batch = cleanEntries.slice(i, i + BATCH_SIZE).map((e) => ({
+        scenario, module_name: e.module_name, content: e.content,
+        metadata: e.metadata,
+      }));
+      const { error } = await supabase.from('scenario_packages').insert(batch);
+      if (error) {
+        console.error(`   ❌ 批次${Math.floor(i / BATCH_SIZE) + 1}失败：${error.message}`);
+        process.exit(1);
+      }
+      inserted += batch.length;
+    }
+    console.log(`   ✅ 写入 ${inserted} 条`);
+
+    // 6. 验证
+    const { data: verify } = await supabase
+      .from('scenario_packages')
+      .select('id, module_name', { count: 'exact' })
+      .eq('scenario', scenario);
+
+    const dbCount = verify?.length || 0;
+    const match = dbCount === cleanEntries.length ? '✅ 精确匹配' : `⚠️ 不一致(预期${cleanEntries.length})`;
+    console.log(`\n🔍 DB: scenario='${scenario}' = ${dbCount} 条 ${match}`);
+
+    batchStats.push({
+      scenario, dirName,
+      parsed: allEntries.length,
+      filtered: filteredCount,
+      written: dbCount,
+      kb: (totalRawBytes / 1024).toFixed(1),
+      byModule,
+    });
+
+    console.log('');
   }
 
-  console.log(`   ✅ 成功写入 ${inserted} 条`);
-
-  // 5. 验证
-  const { data: verify, error: verifyErr } = await supabase
-    .from('scenario_packages')
-    .select('id, module_name', { count: 'exact' })
-    .eq('scenario', SCENARIO);
-
-  console.log(`\n🔍 验证：DB 中 scenario='${SCENARIO}' 共 ${verify?.length || 0} 条`);
-  const verifyByMod = {};
-  for (const v of verify || []) {
-    verifyByMod[v.module_name] = (verifyByMod[v.module_name] || 0) + 1;
+  // 7. 批量报告
+  if (BATCH_MODE || SCENARIOS_TO_RUN.length > 1) {
+    console.log('═══════════════════════════════════════');
+    console.log('  全场景入库汇总');
+    console.log('═══════════════════════════════════════\n');
+    let totalParsed = 0, totalFiltered = 0, totalWritten = 0;
+    for (const s of batchStats) {
+      console.log(`  场景${s.scenario}: 解析${s.parsed} → 过滤${s.filtered} → 入库${s.written}`);
+      totalParsed += s.parsed;
+      totalFiltered += s.filtered;
+      totalWritten += s.written;
+    }
+    console.log(`\n  📊 总计: 解析${totalParsed} → 过滤${totalFiltered} → 入库${totalWritten}`);
+    console.log('═══════════════════════════════════════');
   }
-  for (const [mod, count] of Object.entries(verifyByMod)) {
-    console.log(`   ${mod}: ${count} 条`);
-  }
-
-  console.log('\n═══════════════════════════════════════');
-  console.log('  ✅ 语料接入完成');
-  console.log('═══════════════════════════════════════');
 }
 
 // ============================================================
